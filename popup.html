@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Cover Letter Creator</title>
+    <meta name="viewport" content="width=400, initial-scale=1">
+    <style>
+      /* Make container fill the popup body, with more pronounced round edges and subtle shadow */
+      html, body {
+        min-width: 400px !important;
+        max-width: 400px !important;
+        width: 400px !important;
+        height: 440px !important;
+        max-height: 440px !important;
+        min-height: 440px !important;
+        background: #f6f8fa;
+        font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
+        margin: 0px;
+        padding: 0;
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+      body {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+        margin: 0;
+        padding: 24px 20px 0px 20px;
+        max-width: 400px;
+        width: 100%;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        align-items: stretch;
+        justify-content: flex-start;
+        box-sizing: border-box;
+        height: 440px;
+        min-height: 440px;
+        max-height: 440px;
+        overflow-y: auto;
+      }
+      h1 {
+        font-size: 1.3rem;
+        font-weight: 600;
+        color: #2d3a4a;
+        margin: 0 0 12px 0;
+        letter-spacing: 0.5px;
+      }
+      #output {
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: none;
+        overflow-y: visible;
+        background: #f8fafc;
+        border: 1px solid #e0e4ea;
+        border-radius: 10px;
+        padding: 18px 14px;
+        margin-top: 0;
+        font-size: 1.05rem;
+        font-family: inherit;
+        color: #2d3a4a;
+        box-sizing: border-box;
+        margin-bottom: 12px;
+      }
+      .button-row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      button {
+        background: linear-gradient(90deg, #4f8cff 0%, #2356c7 100%);
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        padding: 10px 18px;
+        font-size: 1.05rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.2s, box-shadow 0.2s;
+        box-shadow: 0 1px 4px rgba(79,140,255,0.08);
+      }
+      button:disabled {
+        background: #b5c7e6;
+        color: #fff;
+        cursor: not-allowed;
+        opacity: 0.7;
+      }
+      #resumeUpload {
+        margin-top: 2px;
+        margin-bottom: 12px;
+        font-size: 1.05rem;
+        border-radius: 6px;
+        border: 1px solid #e0e4ea;
+        padding: 7px 12px;
+        background: #f8fafc;
+        color: #2d3a4a;
+      }
+      /* Remove media query that overrides width for small screens */
+      /* @media (max-width: 500px) { ... } */
+    </style>
+    <script>
+      // Force popup window size in Chrome extension context
+      // Set height to 440px to match the CSS and ensure the popup is not too tall or short
+      if (window.chrome && window.resizeTo) {
+        window.resizeTo(400, 440);
+      }
+    </script>
+  </head>
+  <body>
+    <h1>Cover Letter Creator</h1>
+    <input type="file" id="resumeUpload" accept=".pdf,.doc,.docx,.txt" />
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: -8px;">
+      <label for="toneSelect" style="font-size: 1.05rem; color: #2d3a4a; font-weight: 500;">Tone:</label>
+      <select id="toneSelect" style="border-radius: 6px; border: 1px solid #e0e4ea; padding: 7px 12px; font-size: 1.05rem; background: #f8fafc; color: #2d3a4a;">
+        <option value="formal">Formal</option>
+        <option value="less-formal">Less Formal</option>
+      </select>
+    </div>
+    <div class="button-row">
+      <button id="generate">Generate Cover Letter</button>
+      <button id="retry" style="display:none;">Retry Job Info Extraction</button>
+      <button id="downloadPdf" disabled>Download PDF</button>
+      <button id="downloadWord" disabled>Download Word</button>
+    </div>
+    <div id="output"></div>
+    <script src="pdf.min.js"></script>
+    <script src="mammoth.browser.min.js"></script>
+    <script src="jspdf.umd.min.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
