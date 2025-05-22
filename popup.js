@@ -59,8 +59,9 @@ function tryExtractJobInfo() {
           return;
         }
         setTimeout(() => {
-          chrome.storage.local.get(['jobText', 'jobTitle', 'companyName', 'pageText'], function(result) {
-            if (!result.jobText && !result.jobTitle && !result.companyName) {
+          chrome.storage.local.get(['pageText', 'jobText', 'jobTitle', 'companyName', 'companyFromUrl'], function(result) {
+            // Consider pageText as a valid signal that job info was extracted
+            if (!result.pageText && !result.jobText && !result.jobTitle && !result.companyName) {
               document.getElementById('output').innerText = 'No job info found. Try refreshing the job page, scrolling, or clicking Retry.';
               document.getElementById('retry').style.display = '';
             } else if (!result.jobText && (result.jobTitle || result.companyName)) {
@@ -108,48 +109,13 @@ document.getElementById('generate').onclick = async function() {
     const dateString = today.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
     // Get tone selection
     const tone = document.getElementById('toneSelect')?.value || 'formal';
-    let template = `
-[Your Name]
-[Your Address]
-[City, State ZIP Code]
-[Your Email Address]
-[Your Phone Number]
-[Date]
-
-[Hiring Manager's Name]
-[Company Name]
-[Company Address]
-[City, State, Zip Code]
-
-Dear [Hiring Manager's Name],
-
-I am writing to express my interest in the [specific job position] at [Company Name], as advertised. With a strong background in [relevant field or industry], I am excited about the opportunity to contribute my skills and experience to your team.
-
-Throughout my career, I have developed a solid foundation in [key skills or qualifications mentioned in the job description]. My previous roles have equipped me with the ability to [specific tasks or responsibilities mentioned in the job description]. I am confident that my expertise in [specific skill or area of expertise] would make me a valuable asset to [Company Name].
-
-I am particularly drawn to [Company Name]'s commitment to [mention any specific values, missions, or goals of the company as stated on their website or job postings]. I am impressed by the innovative work being done at your organization and am eager to be a part of a team that is dedicated to [mention any specific projects or initiatives highlighted on the company's website].
-
-I am excited about the prospect of bringing my unique skills and experiences to [Company Name] and am confident in my ability to make a positive contribution. I am looking forward to the opportunity to discuss how my background, skills, and enthusiasms align with the needs of your team.
-
-Thank you for considering my application. I look forward to the possibility of discussing this exciting opportunity with you.
-
-Warm regards,
-
-[Your Name]
-`;
-    // Pre-fill [Company Name] in the header if we have a good guess
-    if (companyFromUrl) {
-      template = template.replace(/\[Company Name\]/g, companyFromUrl);
-    }
-    // Pre-fill [Date] with today's date
-    template = template.replace(/\[Date\]/g, dateString);
     let promptTone = '';
     if (tone === 'less-formal') {
-      promptTone = 'Write a professional but friendly and not overly formal cover letter. Use simpler language and a conversational tone. Ensure the opening sentence is natural and grammatically correct, especially if the job title includes technologies or tools. If the job title contains technologies or tools (e.g., Automation Tester with Python & Playwright), rephrase the opening so it sounds natural, such as: "I am excited to apply for the \"Automation Tester with Python & Playwright\" position at Cognizant Technology Solutions, where my experience with Python and Playwright will be an asset." Always put the job title in double quotes in the opening sentence. Do not use awkward phrasing like "the Automation Tester with Python & Playwright position."';
+      promptTone = 'Write a professional but friendly and not overly formal cover letter. Do NOT use or mention a hiring manager or any generic greeting. Do not use "Dear Hiring Manager" or similar. Start the letter directly with the body. Do NOT include a "Re:" or subject line. Ensure the opening sentence is natural and grammatically correct, and uses the exact job title and company name. Always put the job title in double quotes in the opening sentence. Make the letter relevant for any type of job, not just technical or developer roles.';
     } else {
-      promptTone = 'Write a professional, formal cover letter. Ensure the opening sentence is natural and grammatically correct, especially if the job title includes technologies or tools. If the job title contains technologies or tools (e.g., Automation Tester with Python & Playwright), rephrase the opening so it sounds natural, such as: "I am excited to apply for the \"Automation Tester with Python & Playwright\" position at Cognizant Technology Solutions, where my experience with Python and Playwright will be an asset." Always put the job title in double quotes in the opening sentence. Do not use awkward phrasing like "the Automation Tester with Python & Playwright position."';
+      promptTone = 'Write a professional, formal cover letter. Do NOT use or mention a hiring manager or any generic greeting. Do not use "Dear Hiring Manager" or similar. Start the letter directly with the body. Do NOT include a "Re:" or subject line. Ensure the opening sentence is natural and grammatically correct, and uses the exact job title and company name. Always put the job title in double quotes in the opening sentence. Make the letter relevant for any type of job, not just technical or developer roles.';
     }
-    const prompt = `${promptTone}\n\nResume Text:\n${resumeText}\n\nFull Page Text (from job site):\n${pageText}\n\nCompany Name (from URL, if available):\n${companyFromUrl}\n\nExtract the job title, company name, and job description from the full page text above. If the company name is missing, use the company name from the URL if available. Use all available information to fill in the following cover letter template with the applicant's personal information (name, address, city/state/zip, email, phone) from the resume, and tailor the letter to the job and company. Replace all placeholders.\n\nTemplate:\n${template}`;
+    const prompt = `${promptTone}\n\nResume Text:\n${resumeText}\n\nFull Page Text (from job site):\n${pageText}\n\nCompany Name (from URL, if available):\n${companyFromUrl}\n\nToday's Date: ${dateString}\n\nGenerate a complete, professional cover letter for the job above. Use all available information from the resume and job description. The header should include the applicant's name, address, city/state/zip, email, phone, and today's date, each on its own line. Clearly state the company name and job title, each on their own line, and ensure there is always a blank line between the header and the body. Make the letter flow naturally and avoid any awkward formatting or merged lines. Do not use a template or placeholders. Output the letter as ready-to-send text. The entire cover letter must not exceed 1,530 characters (including spaces and punctuation). If necessary, trim or summarize to fit this limit.`;
     try {
       const response = await fetch('https://cover-letter-generator-cr21.onrender.com/generate-cover-letter', {
         method: 'POST',
@@ -172,11 +138,19 @@ Warm regards,
         .replace(/\n/g, "<br>")
         .replace(/ +/g, " ")
         .trim();
-      // Remove [Hiring Manager's Name], [Company Address], and [City, State, Zip Code] fields if not filled (i.e., still in brackets)
-      // If [Hiring Manager's Name] is missing, also remove the 'Dear ...,' line
+      // Enforce 1,530 character limit (including spaces and punctuation)
+      if (formatted.replace(/<br>/g, '').length > 1530) {
+        // Truncate at the last full word before 1530 chars
+        let plain = formatted.replace(/<br>/g, '\n');
+        let cut = plain.slice(0, 1530);
+        // Avoid cutting in the middle of a word
+        cut = cut.slice(0, cut.lastIndexOf(' '));
+        formatted = cut.replace(/\n/g, '<br>');
+        // Do NOT append any note about trimming
+      }
+      // Remove [Company Address] and [City, State, Zip Code] fields if not filled (i.e., still in brackets)
       // Remove block lines
-      formatted = formatted.replace(/<br>\[Hiring Manager's Name\]<br>/g, '')
-                         .replace(/<br>\[Company Address\]<br>/g, '')
+      formatted = formatted.replace(/<br>\[Company Address\]<br>/g, '')
                          .replace(/<br>\[City, State, Zip Code\]<br>/g, '');
       // Remove inline brackets
       formatted = formatted.replace(/\[.*?\]/g, '');
@@ -201,90 +175,194 @@ Warm regards,
   });
 };
 
+// --- Utility: Extract header info for filename ---
+// Accepts optional fallbackCompany and fallbackPosition (e.g., from companyFromUrl/jobTitle)
+function extractHeaderInfoFromCoverLetter(html, fallbackCompany = '', fallbackPosition = '') {
+  const lines = html.replace(/<br\s*\/?>(\s*)?/gi, '\n').split('\n').map(l => l.trim()).filter(Boolean);
+  let name = lines[0] || '';
+  let recipientIdx = 6;
+  for (let i = 0; i < Math.min(10, lines.length); i++) {
+    if (/\b\w+ \d{1,2}, \d{4}\b/.test(lines[i])) {
+      recipientIdx = i + 1;
+      break;
+    }
+  }
+  let company = '';
+  let position = '';
+  // Company: must not be 'Dear' or empty (removed Hiring Manager logic)
+  for (let i = recipientIdx; i < recipientIdx + 4 && i < lines.length; i++) {
+    if (lines[i] &&
+        !/\b(Mr\.|Ms\.|Mrs\.|Dr\.|Dear|Street|Avenue|Road|Blvd|Drive|Lane|Court|Circle|Ave|St|Rd|Dr|\d{5}|,|@|\d)/i.test(lines[i]) &&
+        !/^I am /i.test(lines[i])) {
+      company = lines[i];
+      break;
+    }
+  }
+  // Position: look for quoted job title or 'for the ... position', but never a line starting with 'I am'
+  for (let i = recipientIdx + 4; i < lines.length; i++) {
+    if (/^I am /i.test(lines[i])) continue;
+    const m = lines[i].match(/"([^"]+)"/);
+    if (m && m[1]) {
+      position = m[1];
+      break;
+    }
+    const m2 = lines[i].match(/apply for the ([^"]+) position/i) || lines[i].match(/for the ([^"]+) position/i);
+    if (m2 && m2[1]) {
+      position = m2[1].trim();
+      break;
+    }
+    const m3 = lines[i].match(/role of ([^.,]+)/i) || lines[i].match(/position of ([^.,]+)/i);
+    if (m3 && m3[1]) {
+      position = m3[1].trim();
+      break;
+    }
+  }
+  let applicant = lines[lines.length - 1] || '';
+  // Clean up
+  const isInvalid = v => !v || /dear|^i am /i.test(v);
+  company = company.replace(/[^\w\s\-&]/g, '').trim();
+  position = position.replace(/[^\w\s\-&]/g, '').trim();
+  applicant = applicant.replace(/[^\w\s\-&]/g, '').trim();
+  // Fallback to fallbackCompany if company is missing/invalid
+  if (isInvalid(company) && fallbackCompany) {
+    company = fallbackCompany.replace(/[^\w\s\-&]/g, '').trim();
+  }
+  // Fallback to fallbackPosition if position is missing/invalid
+  if (isInvalid(position) && fallbackPosition) {
+    position = fallbackPosition.replace(/[^\w\s\-&]/g, '').trim();
+  }
+  let filenameParts = [];
+  if (!isInvalid(company)) filenameParts.push(company);
+  if (!isInvalid(position)) filenameParts.push(position);
+  if (applicant) filenameParts.push(applicant);
+  if (filenameParts.length === 0) filenameParts = ['Cover Letter'];
+  return { company, position, applicant, filenameParts };
+}
+
 // Download PDF button logic
 // Requires jsPDF (add <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script> to popup.html)
 document.getElementById('downloadPdf').onclick = function() {
   if (!lastCoverLetterHtml) return;
-  // Try to get company and person name for filename
-  let company = '';
-  let person = '';
-  const html = lastCoverLetterHtml;
-  // Company name: try to find in greeting or body
-  const companyMatch = html.match(/at ([^,<\n]+)/i) || html.match(/\n([^\n]+)\nDear/) || html.match(/Dear [^,]+,?\n?\s*at ([^,<\n]+)/i);
-  if (companyMatch && companyMatch[1]) {
-    company = companyMatch[1].replace(/[^\w\s\-&]/g, '').trim();
-  }
-  // Person name: look for last non-empty line (signature)
-  const pdfLinesForName = html.replace(/<br\s*\/?>(\s*)?/gi, '\n').split('\n').map(l => l.trim()).filter(Boolean);
-  if (pdfLinesForName.length > 0) {
-    person = pdfLinesForName[pdfLinesForName.length - 1].replace(/[^\w\s\-&]/g, '').trim();
-  }
-  if (!company) company = 'Company';
-  if (!person) person = 'Applicant';
-  const filename = `${company} cover letter - ${person}.pdf`;
-  // Convert HTML to plain text for PDF
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = lastCoverLetterHtml.replace(/<br>/g, '\n');
-  const text = tempDiv.innerText;
-  const { jsPDF } = window.jspdf;
-  // Set up PDF with professional styling
-  const doc = new jsPDF({
-    unit: 'mm',
-    format: 'a4'
-  });
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 25; // 1 inch margin
-  let y = margin;
-  let lineHeight = 8;
-  let sectionSpacing = 5;
-  let fontSizeNormal = 12;
-  let fontSizeLarge = 16;
-  const font = 'Times';
-  const usableHeight = pageHeight - margin;
+  // Use companyFromUrl, jobTitle, and companyName as fallbacks for filename extraction
+  chrome.storage.local.get(['companyFromUrl', 'jobTitle', 'companyName'], function(result) {
+    const fallbackCompany = result.companyFromUrl || result.companyName || '';
+    const fallbackPosition = result.jobTitle || '';
+    const { filenameParts } = extractHeaderInfoFromCoverLetter(lastCoverLetterHtml, fallbackCompany, fallbackPosition);
+    const filename = filenameParts.join(' ') + '.pdf';
+    // Convert HTML to plain text for PDF
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = lastCoverLetterHtml.replace(/<br>/g, '\n');
+    const text = tempDiv.innerText;
+    const { jsPDF } = window.jspdf;
+    // Set up PDF with professional styling
+    const doc = new jsPDF({
+      unit: 'mm',
+      format: 'a4'
+    });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 25; // 1 inch margin
+    let y = margin;
+    let lineHeight = 8;
+    let sectionSpacing = 5;
+    let fontSizeNormal = 12;
+    let fontSizeLarge = 16;
+    const font = 'Times';
+    const usableHeight = pageHeight - margin;
 
-  // Split text into lines for section formatting
-  const lines = text.split('\n');
-  let nameLineIdx = lines.findIndex(l => l.trim().length > 0);
-  let name = nameLineIdx !== -1 ? lines[nameLineIdx] : '';
+    // Split text into lines for section formatting
+    const lines = text.split('\n');
+    let nameLineIdx = lines.findIndex(l => l.trim().length > 0);
+    let name = nameLineIdx !== -1 ? lines[nameLineIdx] : '';
 
-  // --- Fit-to-one-page logic ---
-  // Estimate total lines needed (including wrapped lines)
-  function estimateTotalLines(fontSize, lHeight, sSpacing) {
-    let total = 0;
-    let i = nameLineIdx + 1;
-    let addressLines = 0, recipientLines = 0;
-    // Name
-    if (name) total++;
-    // Address
-    while (i < lines.length && lines[i].trim().length > 0 && addressLines < 4) {
+    // --- Fit-to-one-page logic ---
+    // Estimate total lines needed (including wrapped lines)
+    function estimateTotalLines(fontSize, lHeight, sSpacing) {
+      let total = 0;
+      let i = nameLineIdx + 1;
+      let addressLines = 0, recipientLines = 0;
+      // Name
+      if (name) total++;
+      // Address
+      while (i < lines.length && lines[i].trim().length > 0 && addressLines < 4) {
+        total++;
+        i++; addressLines++;
+      }
+      total++; // section spacing
+      // Date
+      while (i < lines.length && lines[i].trim().length === 0) i++;
+      if (i < lines.length) { total++; i++; }
+      total++; // section spacing
+      // Recipient
+      recipientLines = 0;
+      while (i < lines.length && lines[i].trim().length > 0 && recipientLines < 4) {
+        total++;
+        i++; recipientLines++;
+      }
+      total++; // section spacing
+      // Greeting
+      while (i < lines.length && lines[i].trim().length === 0) i++;
+      if (i < lines.length) { total++; i++; }
       total++;
-      i++; addressLines++;
+      // Body
+      while (i < lines.length) {
+        if (lines[i].trim().length === 0) total++;
+        else total += Math.ceil(lines[i].length / 80);
+        i++;
+      }
+      return total;
     }
-    total++; // section spacing
-    // Date
-    while (i < lines.length && lines[i].trim().length === 0) i++;
-    if (i < lines.length) { total++; i++; }
-    total++; // section spacing
-    // Recipient
-    recipientLines = 0;
+
+    // Print header, address, recipient, greeting, body (with company/city-state fix)
+    doc.setFont(font, 'normal');
+    doc.setFontSize(fontSizeNormal);
+    let i = nameLineIdx;
+    // Print header block
+    for (let block = 0; block < 6 && i < lines.length; block++, i++) {
+      if (lines[i].trim().length > 0) {
+        doc.text(lines[i], margin, y, { align: 'left' });
+        y += lineHeight;
+      }
+    }
+    y += sectionSpacing;
+    // Print recipient block (next 3-4 lines, with company/city-state fix)
+    let recipientLines = 0;
     while (i < lines.length && lines[i].trim().length > 0 && recipientLines < 4) {
-      total++; i++; recipientLines++;
+      let line = lines[i];
+      // Fix: If line looks like 'CompanyCity, State', split with space
+      const m = line.match(/^([A-Za-z0-9&\-. ]+)([A-Z][a-z]+, [A-Z]{2,})$/);
+      if (m) {
+        line = m[1].trim() + ' ' + m[2].trim();
+      }
+      doc.text(line, margin, y, { align: 'left' });
+      y += lineHeight;
+      i++;
+      recipientLines++;
     }
-    total++; // section spacing
-    // Greeting
+    y += sectionSpacing;
+    // Print greeting (next non-empty line)
     while (i < lines.length && lines[i].trim().length === 0) i++;
-    if (i < lines.length) { total++; i++; }
-    total++; // section spacing
-    // Body (estimate wrapped lines)
+    if (i < lines.length) {
+      const greetingLines = doc.splitTextToSize(lines[i], pageWidth - 2 * margin);
+      greetingLines.forEach(line => {
+        doc.text(line, margin, y, { align: 'left' });
+        y += lineHeight;
+      });
+      y += sectionSpacing;
+      i++;
+    }
+    // Print body paragraphs
     let bodyLines = [];
     while (i < lines.length) {
       if (lines[i].trim().length === 0) {
         if (bodyLines.length > 0) {
           const bodyText = bodyLines.join(' ');
           const splitBody = doc.splitTextToSize(bodyText, pageWidth - 2 * margin);
-          total += splitBody.length;
-          total++; // section spacing
+          splitBody.forEach(line => {
+            doc.text(line, margin, y, { align: 'left' });
+            y += lineHeight;
+          });
+          y += sectionSpacing;
           bodyLines = [];
         }
       } else {
@@ -295,139 +373,13 @@ document.getElementById('downloadPdf').onclick = function() {
     if (bodyLines.length > 0) {
       const bodyText = bodyLines.join(' ');
       const splitBody = doc.splitTextToSize(bodyText, pageWidth - 2 * margin);
-      total += splitBody.length;
+      splitBody.forEach(line => {
+        doc.text(line, margin, y, { align: 'left' });
+        y += lineHeight;
+      });
     }
-    return total;
-  }
-
-  // Try to fit by reducing font size/line height if needed
-  let fits = false;
-  let minFontSize = 8;
-  let minLineHeight = 5;
-  for (let tryFont = fontSizeNormal; tryFont >= minFontSize; tryFont--) {
-    for (let tryLine = lineHeight; tryLine >= minLineHeight; tryLine--) {
-      let estLines = estimateTotalLines(tryFont, tryLine, sectionSpacing);
-      if (margin + estLines * tryLine < pageHeight - margin) {
-        fontSizeNormal = tryFont;
-        fontSizeLarge = Math.max(tryFont + 3, fontSizeLarge);
-        lineHeight = tryLine;
-        fits = true;
-        break;
-      }
-    }
-    if (fits) break;
-  }
-  if (!fits) {
-    // If it still doesn't fit, shrink everything to min and let it overflow
-    fontSizeNormal = minFontSize;
-    fontSizeLarge = minFontSize + 3;
-    lineHeight = minLineHeight;
-  }
-
-  // Print name in large font
-  y = margin;
-  if (name) {
-    doc.setFont(font, 'bold');
-    doc.setFontSize(fontSizeLarge);
-    doc.text(name, margin, y, { align: 'left' });
-    y += lineHeight + 2;
-  }
-
-  // Print address block (next 3-4 lines)
-  doc.setFont(font, 'normal');
-  doc.setFontSize(fontSizeNormal);
-  let i = nameLineIdx + 1;
-  let addressLines = 0;
-  while (i < lines.length && lines[i].trim().length > 0 && addressLines < 4) {
-    doc.text(lines[i], margin, y, { align: 'left' });
-    y += lineHeight;
-    i++;
-    addressLines++;
-  }
-  y += sectionSpacing;
-
-  // Print date (next non-empty line)
-  while (i < lines.length && lines[i].trim().length === 0) i++;
-  if (i < lines.length) {
-    doc.text(lines[i], margin, y, { align: 'left' });
-    y += lineHeight + sectionSpacing;
-    i++;
-  }
-
-  // Print recipient block (next 3-4 lines)
-  let recipientLines = 0;
-  while (i < lines.length && lines[i].trim().length > 0 && recipientLines < 4) {
-    doc.text(lines[i], margin, y, { align: 'left' });
-    y += lineHeight;
-    i++;
-    recipientLines++;
-  }
-  y += sectionSpacing;
-
-  // Print greeting (next non-empty line)
-  while (i < lines.length && lines[i].trim().length === 0) i++;
-  if (i < lines.length) {
-    // Wrap and print the greeting line (e.g., Dear ...)
-    const greetingLines = doc.splitTextToSize(lines[i], pageWidth - 2 * margin);
-    greetingLines.forEach(line => {
-      doc.text(line, margin, y, { align: 'left' });
-      y += lineHeight;
-    });
-    y += sectionSpacing;
-    i++;
-  }
-
-  // Print body paragraphs (including the first one, with wrapping)
-  let bodyLines = [];
-  while (i < lines.length) {
-    if (lines[i].trim().length === 0) {
-      if (bodyLines.length > 0) {
-        // Wrap and print the paragraph
-        const bodyText = bodyLines.join(' ');
-        const splitBody = doc.splitTextToSize(bodyText, pageWidth - 2 * margin);
-        splitBody.forEach(line => {
-          doc.text(line, margin, y, { align: 'left' });
-          y += lineHeight;
-        });
-        y += sectionSpacing;
-        bodyLines = [];
-      }
-    } else {
-      bodyLines.push(lines[i]);
-    }
-    i++;
-  }
-  // Print any remaining body lines (last paragraph)
-  if (bodyLines.length > 0) {
-    const bodyText = bodyLines.join(' ');
-    const splitBody = doc.splitTextToSize(bodyText, pageWidth - 2 * margin);
-    splitBody.forEach(line => {
-      doc.text(line, margin, y, { align: 'left' });
-      y += lineHeight;
-    });
-  }
-
-  doc.save(filename);
-};
-
-document.getElementById('downloadWord').onclick = function() {
-  if (!lastCoverLetterHtml) return;
-  // Wrap the HTML in a Word-compatible structure
-  const htmlContent = `<!DOCTYPE html>
-<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-<head><meta charset='utf-8'><title>Cover Letter</title></head>
-<body>${lastCoverLetterHtml.replace(/<br>/g, '<br/>')}</body></html>`;
-  const blob = new Blob([htmlContent], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'cover-letter.docx';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 100);
+    doc.save(filename);
+  });
 };
 
 // Download Word button logic
@@ -435,41 +387,26 @@ document.getElementById('downloadWord').onclick = function() {
 const downloadWordBtn = document.getElementById('downloadWord');
 downloadWordBtn.onclick = function() {
   if (!lastCoverLetterHtml) return;
-  // Try to get company and person name for filename
-  let company = '';
-  let person = '';
-  // Try to extract from lastCoverLetterHtml (fallback to blanks if not found)
-  // Company: look for first occurrence of 'at <b>Company Name</b>' or 'at [Company Name]' or 'at <company>'
-  // Person: look for closing signature (last non-empty line)
-  const html = lastCoverLetterHtml;
-  // Company name: try to find in greeting or body
-  const companyMatch = html.match(/at ([^,<\n]+)/i) || html.match(/\n([^\n]+)\nDear/) || html.match(/Dear [^,]+,?\n?\s*at ([^,<\n]+)/i);
-  if (companyMatch && companyMatch[1]) {
-    company = companyMatch[1].replace(/[^\w\s\-&]/g, '').trim();
-  }
-  // Person name: look for last non-empty line (signature)
-  const lines = html.replace(/<br\s*\/?>(\s*)?/gi, '\n').split('\n').map(l => l.trim()).filter(Boolean);
-  if (lines.length > 0) {
-    person = lines[lines.length - 1].replace(/[^\w\s\-&]/g, '').trim();
-  }
-  // Fallbacks
-  if (!company) company = 'Company';
-  if (!person) person = 'Applicant';
-  // Format filename
-  const filename = `${company} cover letter - ${person}.doc`;
-  // Convert HTML to Word-compatible HTML
-  const htmlContent = `<!DOCTYPE html><html><head><meta charset='utf-8'></head><body style="font-family:Times New Roman,serif;font-size:12pt;">${lastCoverLetterHtml.replace(/<br>/g, '<br>')}</body></html>`;
-  const blob = new Blob([htmlContent], { type: 'application/msword' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 0);
+  // Use companyFromUrl, jobTitle, and companyName as fallbacks for filename extraction
+  chrome.storage.local.get(['companyFromUrl', 'jobTitle', 'companyName'], function(result) {
+    const fallbackCompany = result.companyFromUrl || result.companyName || '';
+    const fallbackPosition = result.jobTitle || '';
+    const { filenameParts } = extractHeaderInfoFromCoverLetter(lastCoverLetterHtml, fallbackCompany, fallbackPosition);
+    const filename = filenameParts.join(' ') + '.doc';
+    // Convert HTML to Word-compatible HTML
+    const htmlContent = `<!DOCTYPE html><html><head><meta charset='utf-8'></head><body style="font-family:Times New Roman,serif;font-size:12pt;">${lastCoverLetterHtml.replace(/<br>/g, '<br>')}</body></html>`;
+    const blob = new Blob([htmlContent], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 0);
+  });
 };
 
 // Enable Download Word button after generation

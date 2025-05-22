@@ -4,8 +4,11 @@
   function saveJobContext() {
     const pageText = document.body.innerText || '';
     console.log('[CoverLetterExt] saveJobContext called. pageText length:', pageText.length);
-    chrome.storage.local.set({ pageText }, () => {
-      console.log('[CoverLetterExt] pageText saved to storage.');
+    // Clear any old jobTitle from storage to prevent stale data
+    chrome.storage.local.remove('jobTitle', () => {
+      chrome.storage.local.set({ pageText }, () => {
+        console.log('[CoverLetterExt] pageText saved to storage and jobTitle cleared.');
+      });
     });
   }
 
