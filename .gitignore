@@ -1,0 +1,28 @@
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+Icon?
+
+# VS Code settings
+.vscode/
+
+# Logs (if any)
+*.log
+
+# Environment variables (if you ever add them)
+.env
+.env.*
+
+# Node.js
+node_modules/
+
+# Chrome extension artifacts
+*.crx
+
+# Miscellaneous
+*.local
+*.swp
+
+# Do NOT commit your OpenAI API key or any secret keys!
