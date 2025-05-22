@@ -179,12 +179,12 @@ Warm regards,
                          .replace(/<br>\[Company Address\]<br>/g, '')
                          .replace(/<br>\[City, State, Zip Code\]<br>/g, '');
       // Remove inline brackets
-      formatted = formatted.replace(/\[Hiring Manager's Name\]/g, '')
-                         .replace(/\[Company Address\]/g, '')
-                         .replace(/\[City, State, Zip Code\]/g, '');
-      // Remove 'Dear ...,' line if no hiring manager name
-      formatted = formatted.replace(/<br>Dear\s*,<br>/gi, ''); // handles 'Dear ,'
-      formatted = formatted.replace(/<br>Dear\s*<br>/gi, ''); // handles 'Dear' alone
+      formatted = formatted.replace(/\[.*?\]/g, '');
+      // Remove 'Dear ...,' line if no hiring manager name (handles 'Dear ,' and 'Dear' alone)
+      formatted = formatted.replace(/<br>Dear\s*,<br>/gi, '')
+                           .replace(/<br>Dear\s*<br>/gi, '')
+                           .replace(/<br>Dear\s*\n/gi, '')
+                           .replace(/Dear\s*,?\s*<br>/gi, '');
       // Remove zip code if it's 00000
       formatted = formatted.replace(/(\d{5})(?!\d)/g, function(zip) {
         return zip === '00000' ? '' : zip;

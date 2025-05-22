@@ -86,14 +86,112 @@
         opacity: 0.7;
       }
       #resumeUpload {
-        margin-top: 2px;
-        margin-bottom: 10px;
-        font-size: 0.95rem;
+        display: none;
+      }
+      #customUploadBtn {
+        display: inline-block;
+        background: linear-gradient(90deg, #4f8cff 0%, #2356c7 100%);
+        color: #fff;
+        border: none;
         border-radius: 6px;
-        border: 1px solid #e0e4ea;
-        padding: 5px 10px;
-        background: #f8fafc;
+        padding: 7px 18px;
+        font-size: 0.98rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
+        box-shadow: 0 1px 4px rgba(79,140,255,0.08);
+        outline: none;
+        position: relative;
+        user-select: none;
+      }
+      #customUploadBtn:hover, #customUploadBtn:focus {
+        background: linear-gradient(90deg, #2356c7 0%, #4f8cff 100%);
+        box-shadow: 0 4px 16px #2356c780;
+        transform: scale(1.05) translateY(-2px);
+      }
+      #customUploadBtn input[type="file"] {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+      }
+      #customUploadBtn:active {
+        transform: scale(0.98);
+      }
+      /* Custom file upload button styles */
+      .file-upload-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 10px;
+        width: 100%;
+      }
+      .file-upload-label {
+        flex: 1 1 0%;
+        width: 100%;
+        background: linear-gradient(90deg, #4f8cff 0%, #2356c7 100%);
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        padding: 7px 16px;
+        font-size: 0.95rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
+        box-shadow: 0 1px 4px rgba(79,140,255,0.08);
+        display: inline-block;
+        outline: none;
+        user-select: none;
+        text-align: center;
+      }
+      .file-upload-label:hover, .file-upload-label:focus {
+        background: #2356c7;
+        color: #fff;
+        box-shadow: 0 4px 16px #2356c780;
+        transform: scale(1.03) translateY(-2px);
+      }
+      .file-upload-input {
+        display: none;
+      }
+      .file-upload-filename {
+        font-size: 0.97rem;
         color: #2d3a4a;
+        max-width: 170px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .upload-status {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 4px;
+        min-height: 24px;
+        width: 100%;
+      }
+      .uploaded-file-name {
+        font-size: 0.98rem;
+        color: #2d3a4a;
+        background: #f6fff8;
+        border-radius: 5px;
+        padding: 2px 10px 2px 8px;
+        border: 1px solid #d2f5e3;
+        display: inline-block;
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .upload-check {
+        display: inline-flex;
+        align-items: center;
+        color: #22bb55;
+        font-size: 1.2rem;
+        margin-left: 2px;
       }
       /* Remove media query that overrides width for small screens */
       /* @media (max-width: 500px) { ... } */
@@ -111,7 +209,16 @@
       <img src="https://cdn.buymeacoffee.com/buttons/bmc-new-btn-logo.svg" alt="Buy Me a Coffee" style="width: 20px; height: 20px; border-radius: 4px;" />
     </a>
     <h1>Cover Letter Creator</h1>
-    <input type="file" id="resumeUpload" accept=".pdf,.doc,.docx,.txt" />
+    <div class="file-upload-wrapper">
+      <label for="resumeUpload" class="file-upload-label" tabindex="0">Upload your resume</label>
+      <input type="file" id="resumeUpload" class="file-upload-input" accept=".pdf,.doc,.docx,.txt" title="Upload your resume" />
+    </div>
+    <div id="uploadStatus" class="upload-status" style="display:none; align-items:center; justify-content:center; gap:8px; margin-top:4px; min-height:24px; width:100%;">
+      <span id="uploadedFileName" class="uploaded-file-name"></span>
+      <span id="uploadCheck" class="upload-check">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="10" fill="#22bb55"/><path d="M6 10.5L9 13.5L14 8.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+    </div>
     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: -8px;">
       <label for="toneSelect" style="font-size: 1.05rem; color: #2d3a4a; font-weight: 500;">Tone:</label>
       <select id="toneSelect" style="border-radius: 6px; border: 1px solid #e0e4ea; padding: 7px 12px; font-size: 1.05rem; background: #f8fafc; color: #2d3a4a;">
@@ -130,5 +237,32 @@
     <script src="mammoth.browser.min.js"></script>
     <script src="jspdf.umd.min.js"></script>
     <script src="popup.js"></script>
+    <script>
+      // Only show upload confirmation under the button
+      const resumeUpload = document.getElementById('resumeUpload');
+      const uploadStatus = document.getElementById('uploadStatus');
+      const uploadedFileName = document.getElementById('uploadedFileName');
+      if (resumeUpload && uploadStatus && uploadedFileName) {
+        resumeUpload.addEventListener('change', function() {
+          if (resumeUpload.files.length > 0) {
+            uploadedFileName.textContent = resumeUpload.files[0].name;
+            uploadStatus.style.display = 'flex';
+          } else {
+            uploadedFileName.textContent = '';
+            uploadStatus.style.display = 'none';
+          }
+        });
+      }
+      // Allow label to trigger file input via keyboard
+      const fileUploadLabel = document.querySelector('.file-upload-label');
+      if (fileUploadLabel && resumeUpload) {
+        fileUploadLabel.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            resumeUpload.click();
+          }
+        });
+      }
+    </script>
   </body>
 </html>
