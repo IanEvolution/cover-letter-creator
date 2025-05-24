@@ -28,12 +28,16 @@
     console.log('[CoverLetterExt] MutationObserver disconnected.');
   }, 10000);
 
-  // Listen for messages from the popup to force extraction
+  // Listen for messages from the popup to force extraction or check for iframes
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg && msg.action === 'extractJobInfo') {
       console.log('[CoverLetterExt] Received extractJobInfo message from popup.');
       saveJobContext();
       sendResponse({status: 'done'});
+    } else if (msg && msg.action === 'checkForIframes') {
+      // Detect iframes on the page
+      const iframes = Array.from(document.getElementsByTagName('iframe'));
+      sendResponse({ hasIframe: iframes.length > 0 });
     }
   });
 })();

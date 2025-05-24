@@ -78,11 +78,50 @@ function tryExtractJobInfo() {
 }
 
 window.addEventListener('DOMContentLoaded', function() {
+  // On load, check for iframes first
+  chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+    if (tabs && tabs[0] && tabs[0].url && /^https?:\/\//.test(tabs[0].url)) {
+      chrome.tabs.sendMessage(tabs[0].id, {action: 'checkForIframes'}, function(response) {
+        if (chrome.runtime.lastError) {
+          document.getElementById('output').innerText = 'Could not read job info from this page. Make sure you are on a job description page and try again.';
+          document.getElementById('retry').style.display = '';
+          return;
+        }
+        if (response && response.hasIframe) {
+          showManualInputBox();
+        } else {
+          tryExtractJobInfo();
+        }
+      });
+    } else {
+      document.getElementById('output').innerText = 'no job detected';
+      document.getElementById('retry').style.display = '';
+    }
+  });
+
   document.getElementById('retry').onclick = function() {
     document.getElementById('output').innerText = 'Retrying extraction...';
-    tryExtractJobInfo();
+    // On retry, re-check for iframes
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      if (tabs && tabs[0] && tabs[0].url && /^https?:\/\//.test(tabs[0].url)) {
+        chrome.tabs.sendMessage(tabs[0].id, {action: 'checkForIframes'}, function(response) {
+          if (chrome.runtime.lastError) {
+            document.getElementById('output').innerText = 'Could not read job info from this page. Make sure you are on a job description page and try again.';
+            document.getElementById('retry').style.display = '';
+            return;
+          }
+          if (response && response.hasIframe) {
+            showManualInputBox();
+          } else {
+            tryExtractJobInfo();
+          }
+        });
+      } else {
+        document.getElementById('output').innerText = 'no job detected';
+        document.getElementById('retry').style.display = '';
+      }
+    });
   };
-  tryExtractJobInfo();
 
   // DEBUG: Show extracted pageText in a modal or alert for inspection
   document.addEventListener('keydown', function(e) {
@@ -144,8 +183,9 @@ document.getElementById('generate').onclick = async function() {
   document.getElementById('output').innerText = "Generating cover letter...";
   document.getElementById('downloadPdf').disabled = true;
   document.getElementById('downloadWord').disabled = true;
-  chrome.storage.local.get(['pageText', 'companyFromUrl'], async function(result) {
-    const pageText = result.pageText || "";
+  chrome.storage.local.get(['pageText', 'companyFromUrl', 'manualJobText'], async function(result) {
+    // Use manualJobText if present, otherwise use pageText
+    let pageText = result.manualJobText && result.manualJobText.trim().length > 0 ? result.manualJobText : (result.pageText || "");
     const companyFromUrl = result.companyFromUrl || "";
     // Format today's date as Month Day, Year
     const today = new Date();
@@ -154,11 +194,11 @@ document.getElementById('generate').onclick = async function() {
     const tone = document.getElementById('toneSelect')?.value || 'formal';
     let promptTone = '';
     if (tone === 'less-formal') {
-      promptTone = 'Write a professional but friendly and not overly formal cover letter. Do NOT use or mention a hiring manager or any generic greeting. Do not use "Dear Hiring Manager" or similar. Start the letter directly with the body. Do NOT include a "Re:" or subject line. Ensure the opening sentence is natural and grammatically correct, and uses the exact job title and company name. Always put the job title in double quotes in the opening sentence. Make the letter relevant for any type of job, not just technical or developer roles.';
+      promptTone = 'Write a professional but friendly and not overly formal cover letter. Do NOT use or mention a hiring manager or any generic greeting. Do not use "Dear Hiring Manager" or similar. Start the letter directly with the body. Do NOT include a "Re:" or subject line. Ensure the opening sentence is natural and grammatically correct, and uses the exact job title and company name. Always put the job title in double quotes in the opening sentence. Make the letter relevant for any type of job, not just technical or developer roles. and please keep it equal to or less that 1530 characters long.';
     } else {
-      promptTone = 'Write a professional, formal cover letter. Do NOT use or mention a hiring manager or any generic greeting. Do not use "Dear Hiring Manager" or similar. Start the letter directly with the body. Do NOT include a "Re:" or subject line. Ensure the opening sentence is natural and grammatically correct, and uses the exact job title and company name. Always put the job title in double quotes in the opening sentence. Make the letter relevant for any type of job, not just technical or developer roles.';
+      promptTone = 'Write a professional, formal cover letter. Do NOT use or mention a hiring manager or any generic greeting. Do not use "Dear Hiring Manager" or similar. Start the letter directly with the body. Do NOT include a "Re:" or subject line. Ensure the opening sentence is natural and grammatically correct, and uses the exact job title and company name. Always put the job title in double quotes in the opening sentence. Make the letter relevant for any type of job, not just technical or developer roles. and please keep it equal to or less that 1530 characters long.';
     }
-    const prompt = `${promptTone}\n\nResume Text:\n${resumeText}\n\nFull Page Text (copied from the job site, may include all visible text):\n${pageText}\n\nCompany Name (from URL, if available):\n${companyFromUrl}\n\nToday's Date: ${dateString}\n\nFrom the full page text above, extract the job title, company name, and especially the job requirements or qualifications. In your cover letter, specifically acknowledge and address the key requirements or qualifications listed in the job description. Use your best judgment if the information is ambiguous or not clearly labeled. Then generate a complete, professional cover letter for the job above. Use all available information from the resume and job description. The header should include the applicant's name, address, city/state/zip, email, phone, and today's date, each on its own line. Clearly state the company name and job title, each on their own line, and ensure there is always a blank line between the header and the body. Make the letter flow naturally and avoid any awkward formatting or merged lines. Do not use a template or placeholders. Output the letter as ready-to-send text. The entire cover letter must not exceed 1,530 characters (including spaces and punctuation). If necessary, trim or summarize to fit this limit.`;
+    const prompt = `${promptTone}\n\nResume Text:\n${resumeText}\n\nFull Page Text (copied from the job site, may include all visible text):\n${pageText}\n\nCompany Name (from URL, if available):\n${companyFromUrl}\n\nToday's Date: ${dateString}\n\nFrom the full page text above, extract the job title, company name, and especially the job requirements or qualifications. In your cover letter, specifically acknowledge and address the key requirements or qualifications listed in the job description. Use your best judgment if the information is ambiguous or not clearly labeled. Then generate a complete, professional cover letter for the job above. Use all available information from the resume and job description. The header should include the applicant's name, address, city/state/zip, email, phone, and today's date, each on its own line. Clearly state the company name and job title, each on their own line, and ensure there is always a blank line between the header and the body. Make the letter flow naturally and avoid any awkward formatting or merged lines. Do not use a template or placeholders. Output the letter as ready-to-send text.`;
     try {
       const response = await fetch('https://cover-letter-creator.onrender.com/generate-cover-letter', {
         method: 'POST',
@@ -178,19 +218,11 @@ document.getElementById('generate').onclick = async function() {
       }
       const data = await response.json();
       let formatted = (data.choices?.[0]?.message?.content || "No cover letter generated.")
+        // Collapse 3+ line breaks to just 2 (so never more than one blank line)
+        .replace(/(\n\s*){3,}/g, '\n\n')
         .replace(/\n/g, "<br>")
         .replace(/ +/g, " ")
         .trim();
-      // Enforce 1,530 character limit (including spaces and punctuation)
-      if (formatted.replace(/<br>/g, '').length > 1530) {
-        // Truncate at the last full word before 1530 chars
-        let plain = formatted.replace(/<br>/g, '\n');
-        let cut = plain.slice(0, 1530);
-        // Avoid cutting in the middle of a word
-        cut = cut.slice(0, cut.lastIndexOf(' '));
-        formatted = cut.replace(/\n/g, '<br>');
-        // Do NOT append any note about trimming
-      }
       // Remove [Company Address] and [City, State, Zip Code] fields if not filled (i.e., still in brackets)
       // Remove block lines
       formatted = formatted.replace(/<br>\[Company Address\]<br>/g, '')
@@ -462,3 +494,17 @@ document.getElementById('generate').onclick = async function() {
     downloadWordBtn.disabled = false;
   }
 };
+
+function showManualInputBox() {
+  const output = document.getElementById('output');
+  output.innerHTML = `<div style="color:#b00;font-weight:600;margin-bottom:8px;">This job description is loaded in a secure iframe and cannot be extracted automatically.<br>Please copy and paste the job description below:</div>
+    <textarea id="manualJobText" style="width:100%;height:120px;resize:vertical;font-size:1rem;padding:8px;border-radius:6px;border:1px solid #ccc;"></textarea>
+    <button id="submitManualJobText" style="margin-top:10px;display:block;width:100%;background:#2356c7;color:#fff;font-size:1rem;padding:8px 0;border-radius:6px;border:none;cursor:pointer;">Submit Job Description</button>`;
+  document.getElementById('retry').style.display = 'none';
+  document.getElementById('submitManualJobText').onclick = function() {
+    // Save manual input to storage for later use
+    const manualJobText = document.getElementById('manualJobText').value;
+    chrome.storage.local.set({ manualJobText });
+    output.innerHTML = '<span style="color:green;font-weight:600;">Job description submitted! Now upload your resume and click Generate.</span>';
+  };
+}
