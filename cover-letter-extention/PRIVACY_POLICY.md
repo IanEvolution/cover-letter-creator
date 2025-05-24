@@ -6,4 +6,4 @@ Your privacy is important to us. The Cover Letter Creator Chrome Extension does 
 - No data is stored, tracked, or shared with third parties.
 - We do not use your data for analytics, marketing, or any purpose other than generating your requested cover letter.
 
-If you have any questions, contact us at [your email address].
+If you have any questions, contact us at ianholt839@gmail.com.
