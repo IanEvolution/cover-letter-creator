@@ -74,7 +74,7 @@ function tryExtractJobInfo() {
         }, 350);
       });
     } else {
-      document.getElementById('output').innerText = 'This extension only works on regular job pages (not Chrome or extension pages).';
+      document.getElementById('output').innerText = 'no job detected';
       document.getElementById('retry').style.display = '';
     }
   });
