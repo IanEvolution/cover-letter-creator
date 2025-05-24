@@ -1,9 +1,17 @@
 // Resume upload and parsing logic
 let resumeText = '';
 const resumeUpload = document.getElementById('resumeUpload');
+const resumeFileNameIndicator = document.createElement('div');
+resumeFileNameIndicator.id = 'resumeFileNameIndicator';
+resumeFileNameIndicator.style = 'margin-top: 6px; font-size: 0.95rem; color: #2356c7; font-weight: 500; word-break: break-all;';
+resumeUpload.parentNode.insertBefore(resumeFileNameIndicator, resumeUpload.nextSibling);
+
 resumeUpload.addEventListener('change', async function(event) {
   const file = event.target.files[0];
   if (!file) return;
+  resumeFileNameIndicator.innerText = `Selected: ${file.name}`;
+  // Save file name to storage for persistence
+  chrome.storage.local.set({ resumeFileName: file.name });
   const fileType = file.name.split('.').pop().toLowerCase();
   document.getElementById('output').innerText = 'Extracting resume text...';
   if (fileType === 'pdf') {
@@ -21,6 +29,7 @@ resumeUpload.addEventListener('change', async function(event) {
         text += content.items.map(item => item.str).join(' ') + '\n';
       }
       resumeText = text;
+      chrome.storage.local.set({ resumeText, resumeFileName: file.name }); // Save both resume and file name persistently
       document.getElementById('output').innerText = 'Resume text extracted.';
     };
     reader.readAsArrayBuffer(file);
@@ -31,6 +40,7 @@ resumeUpload.addEventListener('change', async function(event) {
       const arrayBuffer = reader.result;
       const result = await mammoth.extractRawText({arrayBuffer});
       resumeText = result.value;
+      chrome.storage.local.set({ resumeText, resumeFileName: file.name }); // Save both resume and file name persistently
       document.getElementById('output').innerText = 'Resume text extracted.';
     };
     reader.readAsArrayBuffer(file);
@@ -39,6 +49,7 @@ resumeUpload.addEventListener('change', async function(event) {
     const reader = new FileReader();
     reader.onload = function() {
       resumeText = reader.result;
+      chrome.storage.local.set({ resumeText, resumeFileName: file.name }); // Save both resume and file name persistently
       document.getElementById('output').innerText = 'Resume text extracted.';
     };
     reader.readAsText(file);
@@ -48,36 +59,22 @@ resumeUpload.addEventListener('change', async function(event) {
   }
 });
 
-// On popup load, trigger extraction in the content script
-function tryExtractJobInfo() {
-  chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-    if (tabs && tabs[0] && tabs[0].url && /^https?:\/\//.test(tabs[0].url)) {
-      // Always extract all visible text from the page
-      chrome.tabs.sendMessage(tabs[0].id, {action: 'extractJobInfo'}, function(response) {
-        if (chrome.runtime.lastError) {
-          document.getElementById('output').innerText = 'Could not read job info from this page. Make sure you are on a job description page and try again.';
-          document.getElementById('retry').style.display = '';
-          return;
-        }
-        setTimeout(() => {
-          chrome.storage.local.get(['pageText'], function(result) {
-            if (!result.pageText) {
-              document.getElementById('output').innerText = 'No job info found. Try refreshing the job page, scrolling, or clicking Retry.';
-              document.getElementById('retry').style.display = '';
-            } else {
-              document.getElementById('retry').style.display = 'none';
-            }
-          });
-        }, 350);
-      });
+// On popup load, restore resume if present
+window.addEventListener('DOMContentLoaded', function() {
+  chrome.storage.local.get(['resumeText', 'resumeFileName'], function(result) {
+    if (result.resumeText && result.resumeText.trim().length > 0) {
+      resumeText = result.resumeText;
+      document.getElementById('output').innerText = 'Resume loaded from previous session.';
+      if (result.resumeFileName) {
+        resumeFileNameIndicator.innerText = `Loaded: ${result.resumeFileName}`;
+      } else {
+        resumeFileNameIndicator.innerText = 'Loaded: (resume from previous session)';
+      }
     } else {
-      document.getElementById('output').innerText = 'no job detected';
-      document.getElementById('retry').style.display = '';
+      resumeFileNameIndicator.innerText = '';
     }
   });
-}
 
-window.addEventListener('DOMContentLoaded', function() {
   // On load, check for iframes first
   chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
     if (tabs && tabs[0] && tabs[0].url && /^https?:\/\//.test(tabs[0].url)) {
@@ -219,7 +216,6 @@ document.getElementById('generate').onclick = async function() {
       const data = await response.json();
       let formatted = (data.choices?.[0]?.message?.content || "No cover letter generated.")
         // Collapse 3+ line breaks to just 2 (so never more than one blank line)
-        .replace(/(\n\s*){3,}/g, '\n\n')
         .replace(/\n/g, "<br>")
         .replace(/ +/g, " ")
         .trim();
