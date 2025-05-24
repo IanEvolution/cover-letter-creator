@@ -242,6 +242,8 @@ document.getElementById('generate').onclick = async function() {
       lastCoverLetterHtml = formatted;
       document.getElementById('downloadPdf').disabled = false;
       document.getElementById('downloadWord').disabled = false;
+      // Clear manualJobText after use to prevent reuse on new sites
+      chrome.storage.local.remove('manualJobText');
     } catch (err) {
       document.getElementById('output').innerText = `Error: ${err.message}`;
       document.getElementById('downloadPdf').disabled = true;
