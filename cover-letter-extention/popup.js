@@ -52,21 +52,18 @@ resumeUpload.addEventListener('change', async function(event) {
 function tryExtractJobInfo() {
   chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
     if (tabs && tabs[0] && tabs[0].url && /^https?:\/\//.test(tabs[0].url)) {
+      // Always extract all visible text from the page
       chrome.tabs.sendMessage(tabs[0].id, {action: 'extractJobInfo'}, function(response) {
         if (chrome.runtime.lastError) {
-          document.getElementById('output').innerText = 'Could not read job info from this page.\nMake sure you are on a job description page and try again.';
+          document.getElementById('output').innerText = 'Could not read job info from this page. Make sure you are on a job description page and try again.';
           document.getElementById('retry').style.display = '';
           return;
         }
         setTimeout(() => {
-          chrome.storage.local.get(['pageText', 'jobText', 'jobTitle', 'companyName', 'companyFromUrl'], function(result) {
-            // Consider pageText as a valid signal that job info was extracted
-            if (!result.pageText && !result.jobText && !result.jobTitle && !result.companyName) {
+          chrome.storage.local.get(['pageText'], function(result) {
+            if (!result.pageText) {
               document.getElementById('output').innerText = 'No job info found. Try refreshing the job page, scrolling, or clicking Retry.';
               document.getElementById('retry').style.display = '';
-            } else if (!result.jobText && (result.jobTitle || result.companyName)) {
-              document.getElementById('output').innerText = 'Job description not found, but job title and/or company name detected.\n\nFor best results, generate when on the job description page.';
-              document.getElementById('retry').style.display = 'none';
             } else {
               document.getElementById('retry').style.display = 'none';
             }
@@ -86,6 +83,52 @@ window.addEventListener('DOMContentLoaded', function() {
     tryExtractJobInfo();
   };
   tryExtractJobInfo();
+
+  // DEBUG: Show extracted pageText in a modal or alert for inspection
+  document.addEventListener('keydown', function(e) {
+    // Press Ctrl+Shift+Y to show the extracted text
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'y') {
+      chrome.storage.local.get(['pageText'], function(result) {
+        if (result.pageText) {
+          // Show in a modal window for easier inspection
+          const modal = document.createElement('div');
+          modal.style.position = 'fixed';
+          modal.style.top = '0';
+          modal.style.left = '0';
+          modal.style.width = '100vw';
+          modal.style.height = '100vh';
+          modal.style.background = 'rgba(0,0,0,0.7)';
+          modal.style.zIndex = '9999';
+          modal.style.display = 'flex';
+          modal.style.alignItems = 'center';
+          modal.style.justifyContent = 'center';
+
+          const inner = document.createElement('div');
+          inner.style.background = '#fff';
+          inner.style.padding = '24px';
+          inner.style.borderRadius = '8px';
+          inner.style.maxWidth = '90vw';
+          inner.style.maxHeight = '80vh';
+          inner.style.overflow = 'auto';
+          inner.style.fontSize = '1rem';
+          inner.style.whiteSpace = 'pre-wrap';
+          inner.innerText = result.pageText;
+
+          const closeBtn = document.createElement('button');
+          closeBtn.innerText = 'Close';
+          closeBtn.style.marginTop = '12px';
+          closeBtn.onclick = () => document.body.removeChild(modal);
+          inner.appendChild(document.createElement('br'));
+          inner.appendChild(closeBtn);
+
+          modal.appendChild(inner);
+          document.body.appendChild(modal);
+        } else {
+          alert('No page text extracted yet.');
+        }
+      });
+    }
+  });
 });
 
 // Add jsPDF support for PDF download
@@ -115,7 +158,7 @@ document.getElementById('generate').onclick = async function() {
     } else {
       promptTone = 'Write a professional, formal cover letter. Do NOT use or mention a hiring manager or any generic greeting. Do not use "Dear Hiring Manager" or similar. Start the letter directly with the body. Do NOT include a "Re:" or subject line. Ensure the opening sentence is natural and grammatically correct, and uses the exact job title and company name. Always put the job title in double quotes in the opening sentence. Make the letter relevant for any type of job, not just technical or developer roles.';
     }
-    const prompt = `${promptTone}\n\nResume Text:\n${resumeText}\n\nFull Page Text (from job site):\n${pageText}\n\nCompany Name (from URL, if available):\n${companyFromUrl}\n\nToday's Date: ${dateString}\n\nGenerate a complete, professional cover letter for the job above. Use all available information from the resume and job description. The header should include the applicant's name, address, city/state/zip, email, phone, and today's date, each on its own line. Clearly state the company name and job title, each on their own line, and ensure there is always a blank line between the header and the body. Make the letter flow naturally and avoid any awkward formatting or merged lines. Do not use a template or placeholders. Output the letter as ready-to-send text. The entire cover letter must not exceed 1,530 characters (including spaces and punctuation). If necessary, trim or summarize to fit this limit.`;
+    const prompt = `${promptTone}\n\nResume Text:\n${resumeText}\n\nFull Page Text (copied from the job site, may include all visible text):\n${pageText}\n\nCompany Name (from URL, if available):\n${companyFromUrl}\n\nToday's Date: ${dateString}\n\nFrom the full page text above, extract the job title, company name, and especially the job requirements or qualifications. In your cover letter, specifically acknowledge and address the key requirements or qualifications listed in the job description. Use your best judgment if the information is ambiguous or not clearly labeled. Then generate a complete, professional cover letter for the job above. Use all available information from the resume and job description. The header should include the applicant's name, address, city/state/zip, email, phone, and today's date, each on its own line. Clearly state the company name and job title, each on their own line, and ensure there is always a blank line between the header and the body. Make the letter flow naturally and avoid any awkward formatting or merged lines. Do not use a template or placeholders. Output the letter as ready-to-send text. The entire cover letter must not exceed 1,530 characters (including spaces and punctuation). If necessary, trim or summarize to fit this limit.`;
     try {
       const response = await fetch('https://cover-letter-creator.onrender.com/generate-cover-letter', {
         method: 'POST',
