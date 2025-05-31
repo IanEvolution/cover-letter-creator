@@ -14,43 +14,68 @@ resumeUpload.addEventListener('change', async function(event) {
   chrome.storage.local.set({ resumeFileName: file.name });
   const fileType = file.name.split('.').pop().toLowerCase();
   document.getElementById('output').innerText = 'Extracting resume text...';
-  if (fileType === 'pdf') {
-    // Replace PDF extraction logic
-    const reader = new FileReader();
-    reader.onload = async function() {
-      const typedarray = new Uint8Array(reader.result);
-      const pdfDoc = await PDFLib.PDFDocument.load(typedarray);
-      let text = '';
-      for (const page of pdfDoc.getPages()) {
-        text += page.getTextContent() + '\n';
+  try {
+    if (fileType === 'pdf') {
+      if (typeof pdfjsLib === 'undefined') {
+        document.getElementById('output').innerText = 'PDF extraction library (pdf.js) not loaded.';
+        resumeText = '';
+        return;
       }
-      resumeText = text;
-      chrome.storage.local.set({ resumeText, resumeFileName: file.name });
-      document.getElementById('output').innerText = 'Resume text extracted.';
-    };
-    reader.readAsArrayBuffer(file);
-  } else if (fileType === 'docx') {
-    // Replace DOCX extraction logic
-    const reader = new FileReader();
-    reader.onload = async function() {
-      const doc = new docx.Document(reader.result);
-      const paragraphs = doc.getParagraphs();
-      resumeText = paragraphs.map(p => p.getText()).join('\n');
-      chrome.storage.local.set({ resumeText, resumeFileName: file.name });
-      document.getElementById('output').innerText = 'Resume text extracted.';
-    };
-    reader.readAsArrayBuffer(file);
-  } else if (fileType === 'txt') {
-    // Plain text
-    const reader = new FileReader();
-    reader.onload = function() {
-      resumeText = reader.result;
-      chrome.storage.local.set({ resumeText, resumeFileName: file.name }); // Save both resume and file name persistently
-      document.getElementById('output').innerText = 'Resume text extracted.';
-    };
-    reader.readAsText(file);
-  } else {
-    document.getElementById('output').innerText = 'Unsupported file type.';
+      const reader = new FileReader();
+      reader.onload = async function() {
+        try {
+          const typedarray = new Uint8Array(reader.result);
+          const loadingTask = pdfjsLib.getDocument({data: typedarray});
+          const pdf = await loadingTask.promise;
+          let text = '';
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            text += content.items.map(item => item.str).join(' ') + '\n';
+          }
+          resumeText = text;
+          chrome.storage.local.set({ resumeText, resumeFileName: file.name });
+          document.getElementById('output').innerText = 'Resume text extracted.';
+        } catch (err) {
+          document.getElementById('output').innerText = 'Failed to extract PDF text: ' + err.message;
+          resumeText = '';
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else if (fileType === 'docx') {
+      if (typeof mammoth === 'undefined') {
+        document.getElementById('output').innerText = 'DOCX extraction library (mammoth.js) not loaded.';
+        resumeText = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = async function() {
+        try {
+          const arrayBuffer = reader.result;
+          const result = await mammoth.extractRawText({arrayBuffer});
+          resumeText = result.value;
+          chrome.storage.local.set({ resumeText, resumeFileName: file.name });
+          document.getElementById('output').innerText = 'Resume text extracted.';
+        } catch (err) {
+          document.getElementById('output').innerText = 'Failed to extract DOCX text: ' + err.message;
+          resumeText = '';
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else if (fileType === 'txt') {
+      const reader = new FileReader();
+      reader.onload = function() {
+        resumeText = reader.result;
+        chrome.storage.local.set({ resumeText, resumeFileName: file.name }); // Save both resume and file name persistently
+        document.getElementById('output').innerText = 'Resume text extracted.';
+      };
+      reader.readAsText(file);
+    } else {
+      document.getElementById('output').innerText = 'Unsupported file type.';
+      resumeText = '';
+    }
+  } catch (err) {
+    document.getElementById('output').innerText = 'Resume extraction error: ' + err.message;
     resumeText = '';
   }
 });
@@ -245,8 +270,8 @@ document.getElementById('generate').onclick = async function() {
 };
 
 // --- Utility: Extract header info for filename ---
-// Accepts optional fallbackCompany and fallbackPosition (e.g., from companyFromUrl/jobTitle)
-function extractHeaderInfoFromCoverLetter(html, fallbackCompany = '', fallbackPosition = '') {
+// Accepts optional fallbackCompany (e.g., from companyFromUrl/companyName)
+function extractHeaderInfoFromCoverLetter(html, fallbackCompany = '') {
   const lines = html.replace(/<br\s*\/?>(\s*)?/gi, '\n').split('\n').map(l => l.trim()).filter(Boolean);
   let name = lines[0] || '';
   let recipientIdx = 6;
@@ -257,7 +282,6 @@ function extractHeaderInfoFromCoverLetter(html, fallbackCompany = '', fallbackPo
     }
   }
   let company = '';
-  let position = '';
   // Company: must not be 'Dear' or empty (removed Hiring Manager logic)
   for (let i = recipientIdx; i < recipientIdx + 4 && i < lines.length; i++) {
     if (lines[i] &&
@@ -267,57 +291,36 @@ function extractHeaderInfoFromCoverLetter(html, fallbackCompany = '', fallbackPo
       break;
     }
   }
-  // Position: look for quoted job title or 'for the ... position', but never a line starting with 'I am'
-  for (let i = recipientIdx + 4; i < lines.length; i++) {
-    if (/^I am /i.test(lines[i])) continue;
-    const m = lines[i].match(/"([^"]+)"/);
-    if (m && m[1]) {
-      position = m[1];
-      break;
-    }
-    const m2 = lines[i].match(/apply for the ([^"]+) position/i) || lines[i].match(/for the ([^"]+) position/i);
-    if (m2 && m2[1]) {
-      position = m2[1].trim();
-      break;
-    }
-    const m3 = lines[i].match(/role of ([^.,]+)/i) || lines[i].match(/position of ([^.,]+)/i);
-    if (m3 && m3[1]) {
-      position = m3[1].trim();
-      break;
-    }
-  }
-  let applicant = lines[lines.length - 1] || '';
+  let applicant = lines[0] || '';
   // Clean up
   const isInvalid = v => !v || /dear|^i am /i.test(v);
   company = company.replace(/[^\w\s\-&]/g, '').trim();
-  position = position.replace(/[^\w\s\-&]/g, '').trim();
   applicant = applicant.replace(/[^\w\s\-&]/g, '').trim();
   // Fallback to fallbackCompany if company is missing/invalid
   if (isInvalid(company) && fallbackCompany) {
     company = fallbackCompany.replace(/[^\w\s\-&]/g, '').trim();
   }
-  // Fallback to fallbackPosition if position is missing/invalid
-  if (isInvalid(position) && fallbackPosition) {
-    position = fallbackPosition.replace(/[^\w\s\-&]/g, '').trim();
-  }
-  let filenameParts = [];
-  if (!isInvalid(company)) filenameParts.push(company);
-  if (!isInvalid(position)) filenameParts.push(position);
-  if (applicant) filenameParts.push(applicant);
-  if (filenameParts.length === 0) filenameParts = ['Cover Letter'];
-  return { company, position, applicant, filenameParts };
+  if (isInvalid(applicant)) applicant = '';
+  return { company, applicant };
+}
+
+// Utility: Sanitize and generate a filename for downloads
+function getDownloadFilename(company, applicant, ext) {
+  let safeCompany = (company || '').replace(/[^\w\s\-]/g, '').trim();
+  let safeApplicant = (applicant || '').replace(/[^\w\s\-]/g, '').trim();
+  if (!safeCompany) safeCompany = 'Company';
+  if (!safeApplicant) safeApplicant = 'Applicant';
+  return `${safeCompany} - ${safeApplicant}.${ext}`;
 }
 
 // Download PDF button logic
 // Requires jsPDF (add <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script> to popup.html)
 document.getElementById('downloadPdf').onclick = function() {
   if (!lastCoverLetterHtml) return;
-  // Use companyFromUrl, jobTitle, and companyName as fallbacks for filename extraction
-  chrome.storage.local.get(['companyFromUrl', 'jobTitle', 'companyName'], function(result) {
+  chrome.storage.local.get(['companyFromUrl', 'companyName'], function(result) {
     const fallbackCompany = result.companyFromUrl || result.companyName || '';
-    const fallbackPosition = result.jobTitle || '';
-    const { filenameParts } = extractHeaderInfoFromCoverLetter(lastCoverLetterHtml, fallbackCompany, fallbackPosition);
-    const filename = filenameParts.join(' ') + '.pdf';
+    const { company, applicant } = extractHeaderInfoFromCoverLetter(lastCoverLetterHtml, fallbackCompany);
+    const filename = getDownloadFilename(company, applicant, 'pdf');
     // Convert HTML to plain text for PDF
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = lastCoverLetterHtml.replace(/<br>/g, '\n');
@@ -335,11 +338,7 @@ document.getElementById('downloadPdf').onclick = function() {
     let lineHeight = 8;
     let sectionSpacing = 5;
     let fontSizeNormal = 12;
-    let fontSizeLarge = 16;
-    const font = 'Times';
-    const usableHeight = pageHeight - margin;
-
-    // Split text into lines for section formatting
+    let font = 'Times';
     const lines = text.split('\n');
     let nameLineIdx = lines.findIndex(l => l.trim().length > 0);
     let name = nameLineIdx !== -1 ? lines[nameLineIdx] : '';
@@ -452,17 +451,13 @@ document.getElementById('downloadPdf').onclick = function() {
 };
 
 // Download Word button logic
-// Creates a simple .docx file using a Blob and triggers download
 const downloadWordBtn = document.getElementById('downloadWord');
 downloadWordBtn.onclick = function() {
   if (!lastCoverLetterHtml) return;
-  // Use companyFromUrl, jobTitle, and companyName as fallbacks for filename extraction
-  chrome.storage.local.get(['companyFromUrl', 'jobTitle', 'companyName'], function(result) {
+  chrome.storage.local.get(['companyFromUrl', 'companyName'], function(result) {
     const fallbackCompany = result.companyFromUrl || result.companyName || '';
-    const fallbackPosition = result.jobTitle || '';
-    const { filenameParts } = extractHeaderInfoFromCoverLetter(lastCoverLetterHtml, fallbackCompany, fallbackPosition);
-    const filename = filenameParts.join(' ') + '.doc';
-    // Convert HTML to Word-compatible HTML
+    const { company, applicant } = extractHeaderInfoFromCoverLetter(lastCoverLetterHtml, fallbackCompany);
+    const filename = getDownloadFilename(company, applicant, 'doc');
     const htmlContent = `<!DOCTYPE html><html><head><meta charset='utf-8'></head><body style="font-family:Times New Roman,serif;font-size:12pt;">${lastCoverLetterHtml.replace(/<br>/g, '<br>')}</body></html>`;
     const blob = new Blob([htmlContent], { type: 'application/msword' });
     const url = URL.createObjectURL(blob);
