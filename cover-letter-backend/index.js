@@ -31,8 +31,8 @@ app.post('/generate-cover-letter', async (req, res) => {
       generatedContent = lastSentenceEnd !== -1 ? trimmedContent.substring(0, lastSentenceEnd + 1) : trimmedContent;
     }
 
-    // Ensure titles are more reliable (e.g., capitalize first letter of each word)
-    generatedContent = generatedContent.replace(/\b\w+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1));
+    // Remove unwanted title case logic (do NOT capitalize every word)
+    // generatedContent = generatedContent.replace(/\b\w+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1));
 
     res.json({ choices: [{ message: { content: generatedContent } }] });
   } catch (err) {
