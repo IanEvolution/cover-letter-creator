@@ -15,32 +15,28 @@ resumeUpload.addEventListener('change', async function(event) {
   const fileType = file.name.split('.').pop().toLowerCase();
   document.getElementById('output').innerText = 'Extracting resume text...';
   if (fileType === 'pdf') {
-    // Set the worker source for pdf.js
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
-    // PDF extraction using pdf.js
+    // Replace PDF extraction logic
     const reader = new FileReader();
     reader.onload = async function() {
       const typedarray = new Uint8Array(reader.result);
-      const pdf = await window.pdfjsLib.getDocument({data: typedarray}).promise;
+      const pdfDoc = await PDFLib.PDFDocument.load(typedarray);
       let text = '';
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        text += content.items.map(item => item.str).join(' ') + '\n';
+      for (const page of pdfDoc.getPages()) {
+        text += page.getTextContent() + '\n';
       }
       resumeText = text;
-      chrome.storage.local.set({ resumeText, resumeFileName: file.name }); // Save both resume and file name persistently
+      chrome.storage.local.set({ resumeText, resumeFileName: file.name });
       document.getElementById('output').innerText = 'Resume text extracted.';
     };
     reader.readAsArrayBuffer(file);
   } else if (fileType === 'docx') {
-    // DOCX extraction using mammoth.js
+    // Replace DOCX extraction logic
     const reader = new FileReader();
     reader.onload = async function() {
-      const arrayBuffer = reader.result;
-      const result = await mammoth.extractRawText({arrayBuffer});
-      resumeText = result.value;
-      chrome.storage.local.set({ resumeText, resumeFileName: file.name }); // Save both resume and file name persistently
+      const doc = new docx.Document(reader.result);
+      const paragraphs = doc.getParagraphs();
+      resumeText = paragraphs.map(p => p.getText()).join('\n');
+      chrome.storage.local.set({ resumeText, resumeFileName: file.name });
       document.getElementById('output').innerText = 'Resume text extracted.';
     };
     reader.readAsArrayBuffer(file);
